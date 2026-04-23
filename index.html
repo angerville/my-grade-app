@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <title>초등 성적 관리 매니저 - Cloudflare</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.css"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.js"></script>
+    <script>
+      stlite.mount(
+        {
+          requirements: ["pandas", "plotly"], // 필요한 라이브러리
+          entrypoint: "grade_app.py",
+          files: {
+            "grade_app.py": `
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import os
+
+st.set_page_config(page_title="초등 성적 관리 매니저", layout="wide", page_icon="📝")
+
+DB_FILE = "grade_db.csv"
+
+def load_data():
+    if os.path.exists(DB_FILE):
+        try:
+            return pd.read_csv(DB_FILE)
+        except Exception:
+            return None
+    return None
+
+def save_data(df):
+    df = df.sort_values(by=['학생명', '과목', '시험명'])
+    df.to_csv(DB_FILE, index=False, encoding='utf-8-sig')
+    return df
+
+if 'data' not in st.session_state:
+    st.session_state.data = load_data()
+
+if st.session_state.data is None:
+    st.title("🌱 성적 관리 시스템 초기 설정")
+    student_input = st.text_area("1. 학생 이름을 입력하세요", "학생1, 학생2, 학생3")
+    st.markdown("---")
+    st.subheader("2. 과목별 시험명 설정")
+    col1, col2 = st.columns(2)
+    with col1: kor_tests = st.text_area("국어 시험명", "1단원, 2단원", key="kor")
+    with col2: mat_tests = st.text_area("수학 시험명", "1단원, 단원평가", key="mat")
+    
+    if st.button("🚀 시스템 시작하기"):
+        student_list = [s.strip() for s in student_input.replace('\\n', ',').split(',') if s.strip()]
+        test_config = {
+            "국어": [t.strip() for t in kor_tests.replace('\\n', ',').split(',') if t.strip()],
+            "수학": [t.strip() for t in mat_tests.replace('\\n', ',').split(',') if t.strip()],
+            "사회": ["1단원"], "과학": ["실험관찰"]
+        }
+        rows = []
+        for student in student_list:
+            for sub, tests in test_config.items():
+                for test in tests:
+                    rows.append({"학생명": student, "과목": sub, "시험명": test, "전체문항": 20, "맞은개수": 0, "정답률": 0.0, "백분위": 0.0})
+        st.session_state.data = save_data(pd.DataFrame(rows))
+        st.rerun()
+    st.stop()
+
+st.title("📝 학생 성적 및 성취도 관리")
+tabs = st.tabs(["국어", "수학", "사회", "과학"])
+for i, sub_name in enumerate(["국어", "수학", "사회", "과학"]):
+    with tabs[i]:
+        sub_df = st.session_state.data[st.session_state.data['과목'] == sub_name].copy()
+        if not sub_df.empty:
+            edited_df = st.data_editor(sub_df, key=f"editor_{sub_name}", use_container_width=True)
+            if st.button(f"{sub_name} 저장", key=f"btn_{sub_name}"):
+                st.session_state.data.update(edited_df)
+                st.session_state.data['정답률'] = (st.session_state.data['맞은개수'] / st.session_state.data['전체문항']).fillna(0) * 100
+                save_data(st.session_state.data)
+                st.success("저장 완료!")
+                st.rerun()
+
+st.markdown("---")
+st.header("📈 성취도 분석")
+if not st.session_state.data.empty:
+    target_student = st.selectbox("학생 선택", sorted(st.session_state.data['학생명'].unique()))
+    student_plot_df = st.session_state.data[st.session_state.data['학생명'] == target_student]
+    fig = px.line(student_plot_df, x='시험명', y='정답률', color='과목', markers=True, range_y=[0, 105])
+    st.plotly_chart(fig, use_container_width=True)
+`,
+          },
+        },
+        document.getElementById("root")
+      );
+    </script>
+  </body>
+</html>
